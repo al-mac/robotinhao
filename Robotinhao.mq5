@@ -1,6 +1,6 @@
 #property copyright "Copyright 2016, AlMac."
 #property link      "https://www.google.com.br"
-#property version   "0.50"
+#property version   "0.55"
 
 #include <Trade\Trade.mqh>
 
@@ -47,6 +47,7 @@ void OnTick()
    
    if(IS_TRADING && PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY)
       IS_BUY = true;
+      
    CopyBuffer(FAST_EMA_HANDLE, 0, 0, 5, FAST_EMA_BUFFER);
    CopyBuffer(SLOW_EMA_HANDLE, 0, 0, 5, SLOW_EMA_BUFFER);
    
@@ -73,8 +74,8 @@ void OnTick()
                if(RECENT_BARS[0].open > FAST_EMA_BUFFER[0] || // ou a maxima esta entre as duas medias
                (RECENT_BARS[0].high > FAST_EMA_BUFFER[0] && RECENT_BARS[0].high < SLOW_EMA_BUFFER[0]))
                {
-                  PlaySound("news");
-                  StartTrade(ORDER_TYPE_SELL, LATEST_PRICE.ask, SLOW_EMA_BUFFER[0]);
+                  uint code = StartTrade(ORDER_TYPE_SELL, LATEST_PRICE.bid, SLOW_EMA_BUFFER[0]);
+                  EvaluateTradeResult(code);
                }
             }
          }
@@ -99,8 +100,8 @@ void OnTick()
                if(RECENT_BARS[0].open < FAST_EMA_BUFFER[0] || // ou a minima esta entre as duas medias;
                (RECENT_BARS[0].low < FAST_EMA_BUFFER[0] && RECENT_BARS[0].low > SLOW_EMA_BUFFER[0]))
                {
-                  PlaySound("news");
-                  StartTrade(ORDER_TYPE_BUY, LATEST_PRICE.ask, SLOW_EMA_BUFFER[0]);
+                  uint code = StartTrade(ORDER_TYPE_BUY, LATEST_PRICE.ask, SLOW_EMA_BUFFER[0]);
+                  EvaluateTradeResult(code);
                }
             }
          }
@@ -141,6 +142,40 @@ void OnTick()
    }
 }
 
+void EvaluateTradeResult(uint code)
+{
+   switch(code)
+   {
+      case TRADE_RETCODE_REJECT:
+         Print("ORDEM REJEITADA");
+         PlaySound("alert2");
+         break;
+      case TRADE_RETCODE_DONE:
+         Print("ORDEM ACEITA");
+         PlaySound("news");
+         break;
+      case TRADE_RETCODE_DONE_PARTIAL:
+         Print("ORDEM PARCIALMENTE EXECUTADA");
+         PlaySound("connect");
+         break;
+      case TRADE_RETCODE_TIMEOUT:
+      case TRADE_RETCODE_ERROR:
+      case TRADE_RETCODE_INVALID:
+      case TRADE_RETCODE_INVALID_VOLUME:
+      case TRADE_RETCODE_INVALID_PRICE:
+      case TRADE_RETCODE_INVALID_STOPS:
+         Print("ERRO AO INICIAR O TRADE: ", code);
+         PlaySound("stops");
+         break;
+      case TRADE_RETCODE_NO_MONEY:
+      case TRADE_RETCODE_PRICE_CHANGED:
+         Print("AVISO - TRADE NÃO INICIADO: ", code);
+         PlaySound("request");
+         break;
+      
+   }
+}
+
 uint StartTrade(ENUM_ORDER_TYPE type, double price, double sl)
 {
    LAST_SL = sl;
@@ -151,10 +186,12 @@ uint StartTrade(ENUM_ORDER_TYPE type, double price, double sl)
                       NormalizeDouble(sl, 0),
                       type == ORDER_TYPE_BUY ? NormalizeDouble(price + STOP_GAIN, 0) : NormalizeDouble(price - STOP_GAIN, 0),
                       NULL);
-                      
+
+   
+
    return TRADE.ResultRetcode();
 }
 
 void OnDeinit(const int reason)
-{
+{  
 }
