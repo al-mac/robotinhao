@@ -1,0 +1,2 @@
+-Verificar resultado da abertura / fechamento da ordem. (foi executada, executada parcialmente, etc).
+-Implementar: se a ordem for rejeitada: escreve ela num log para verificar o por quê ela não foi executada, e não tentar novamente)
