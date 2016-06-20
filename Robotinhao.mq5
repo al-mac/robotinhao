@@ -8,8 +8,8 @@
 input int               FAST_EMA = 17;
 input int               SLOW_EMA = 34;
 input int               VOLUME = 5;
-input double            PROFIT_MOVE_STOP = 0;
 input double            STOP_GAIN = 10;
+input double            CALAMITY_GAIN = 5;
 input ENUM_TIMEFRAMES   FASTER_TIMEFRAME = PERIOD_M1;
 input int               EMA_FASTER_TIMEFRAME = 10;
 input int               AVERAGE_DISTANCE = 4;
@@ -25,12 +25,12 @@ double                  EMA_BUFFER_FASTER_TIMEFRAME[];
 // ESTADO DO TRADE;
 bool                    IS_TRADING;
 bool                    IS_BUY;
+bool                    CALAMITY = false;
 
 // PREÇOS;
 MqlTick                 LATEST_PRICE;
 MqlRates                RECENT_BARS[];
 CTrade                  TRADE;
-double                  LAST_SL;
 
 int OnInit()
 {
@@ -54,10 +54,14 @@ void OnTick()
    
    if(IS_TRADING && PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_BUY)
       IS_BUY = true;
+   
+   if(IS_TRADING && PositionGetInteger(POSITION_TYPE) == POSITION_TYPE_SELL)
+      IS_BUY = false;
       
    CopyBuffer(FAST_EMA_HANDLE, 0, 0, 5, FAST_EMA_BUFFER);
    CopyBuffer(SLOW_EMA_HANDLE, 0, 0, 5, SLOW_EMA_BUFFER);
    CopyBuffer(EMA_HANDLE_FASTER_TIMEFRAME, 0, 0, 4, EMA_BUFFER_FASTER_TIMEFRAME);
+   SymbolInfoTick(_Symbol, LATEST_PRICE);
    
    if(!IS_TRADING)
    {
@@ -73,7 +77,7 @@ void OnTick()
             FAST_EMA_BUFFER[2] < FAST_EMA_BUFFER[1] &&
             FAST_EMA_BUFFER[1] < FAST_EMA_BUFFER[0])
          {
-            SymbolInfoTick(_Symbol, LATEST_PRICE);
+            
             // o preço atual está para baixo da média curta
             if(LATEST_PRICE.last < FAST_EMA_BUFFER[4])
             {
@@ -114,7 +118,6 @@ void OnTick()
             FAST_EMA_BUFFER[2] > FAST_EMA_BUFFER[1] &&
             FAST_EMA_BUFFER[1] > FAST_EMA_BUFFER[0])
          {
-            SymbolInfoTick(_Symbol, LATEST_PRICE);
             // o preço atual está para cima da média curta
             if(LATEST_PRICE.last > FAST_EMA_BUFFER[4])
             {
@@ -147,28 +150,31 @@ void OnTick()
    }
    else
    {
-      double profit = PositionGetDouble(POSITION_PROFIT);
-      if(profit > PROFIT_MOVE_STOP && PROFIT_MOVE_STOP > 0)
+      // Analisar o trade para ver se entra no estado de calamidade.
+      // Estado de calamidade: se o preço passar para cima das médias,
+      // alterar stop gain para 1 ponto.
+      if(IS_BUY)
       {
-         if(IS_BUY)
+         if(SLOW_EMA_BUFFER[0] > LATEST_PRICE.last && !CALAMITY)
          {
-            if(LAST_SL < FAST_EMA_BUFFER[0])
-            {
-               LAST_SL = FAST_EMA_BUFFER[0];
-               Print("SUBINDO STOP", LAST_SL);
-               TRADE.PositionModify(_Symbol, LAST_SL, PositionGetDouble(POSITION_TP));
-            }
-         }
-         else
-         {
-            if(LAST_SL > FAST_EMA_BUFFER[0])
-            {
-               LAST_SL = FAST_EMA_BUFFER[0];
-               Print("DESCENDO STOP", LAST_SL);
-               TRADE.PositionModify(_Symbol, LAST_SL, PositionGetDouble(POSITION_TP));
-            }
+            CALAMITY = true;
+            double newTp = PositionGetDouble(POSITION_PRICE_OPEN) + CALAMITY_GAIN;
+            Print("BUY: ENTRANDO EM ESTADO DE CALAMIDADE");
+            TRADE.PositionModify(_Symbol, PositionGetDouble(POSITION_SL), newTp);
          }
       }
+      else
+      {
+         if(SLOW_EMA_BUFFER[0] < LATEST_PRICE.last && !CALAMITY)
+         {
+            CALAMITY = true;
+            Print("SELL: ENTRANDO EM ESTADO DE CALAMIDADE");
+            
+            double newTp = PositionGetDouble(POSITION_PRICE_OPEN) - CALAMITY_GAIN;
+            TRADE.PositionModify(_Symbol, PositionGetDouble(POSITION_SL), newTp);
+         }
+      }
+   
       
       
       if((time.hour == 17 && time.min >= 55) || time.hour >= 18)
@@ -216,7 +222,7 @@ void EvaluateTradeResult(uint code)
 
 uint StartTrade(ENUM_ORDER_TYPE type, double price, double sl)
 {
-   LAST_SL = sl;
+   CALAMITY = false;
    TRADE.PositionOpen(_Symbol,
                       type,
                       VOLUME,
