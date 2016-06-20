@@ -10,9 +10,8 @@ input int               SLOW_EMA = 34;
 input int               VOLUME = 5;
 input double            PROFIT_MOVE_STOP = 0;
 input double            STOP_GAIN = 10;
-input double            MIN_AVERAGE_DISTANCE = 5;
 input ENUM_TIMEFRAMES   FASTER_TIMEFRAME = PERIOD_M1;
-input int               EMA_FASTER_TIMEFRAME = 21;
+input int               EMA_FASTER_TIMEFRAME = 10;
 input int               AVERAGE_DISTANCE = 4;
 
 // INDICADORES;
@@ -81,7 +80,7 @@ void OnTick()
                CopyRates(_Symbol, _Period, 0, 2, RECENT_BARS);
                // e o preço de abertura do candle anterior estava para cima da média curta
                if(RECENT_BARS[0].open > FAST_EMA_BUFFER[0] || // ou a maxima esta entre as duas medias
-               (RECENT_BARS[0].high > FAST_EMA_BUFFER[0] && RECENT_BARS[0].high < SLOW_EMA_BUFFER[0]))
+                  (RECENT_BARS[0].high > FAST_EMA_BUFFER[0] && RECENT_BARS[0].high < SLOW_EMA_BUFFER[0]))
                {
                   if(EMA_BUFFER_FASTER_TIMEFRAME[3] < EMA_BUFFER_FASTER_TIMEFRAME[2] && 
                      EMA_BUFFER_FASTER_TIMEFRAME[2] < EMA_BUFFER_FASTER_TIMEFRAME[1] && 
@@ -90,12 +89,11 @@ void OnTick()
                      // se a distância entre as médias for maior que o parâmetro
                      double avgDist = SLOW_EMA_BUFFER[4] - FAST_EMA_BUFFER[4];
                      if(avgDist > AVERAGE_DISTANCE)
-                     {
-                        Print("AVGDIST: ", avgDist);
-                        
+                     {                        
                         // se o stop gain for maior que o stop loss
                         if(SLOW_EMA_BUFFER[0] - LATEST_PRICE.bid < STOP_GAIN)
                         {
+                           // abrir venda
                            uint code = StartTrade(ORDER_TYPE_SELL, LATEST_PRICE.bid, SLOW_EMA_BUFFER[0]);
                            EvaluateTradeResult(code);
                         }
@@ -123,7 +121,7 @@ void OnTick()
                CopyRates(_Symbol, _Period, 0, 2, RECENT_BARS);
                // e o preço de abertura do candle anterior estava para baixo da média curta
                if(RECENT_BARS[0].open < FAST_EMA_BUFFER[0] || // ou a minima esta entre as duas medias;
-               (RECENT_BARS[0].low < FAST_EMA_BUFFER[0] && RECENT_BARS[0].low > SLOW_EMA_BUFFER[0]))
+                  (RECENT_BARS[0].low < FAST_EMA_BUFFER[0] && RECENT_BARS[0].low > SLOW_EMA_BUFFER[0]))
                {
                   if(EMA_BUFFER_FASTER_TIMEFRAME[3] > EMA_BUFFER_FASTER_TIMEFRAME[2] && 
                      EMA_BUFFER_FASTER_TIMEFRAME[2] > EMA_BUFFER_FASTER_TIMEFRAME[1] && 
@@ -133,10 +131,10 @@ void OnTick()
                      double avgDist = FAST_EMA_BUFFER[4] - SLOW_EMA_BUFFER[4];
                      if(avgDist > AVERAGE_DISTANCE)
                      {
-                        Print("AVGDIST: ", avgDist);
                         // se o stop gain for maior que o stop loss
                         if(LATEST_PRICE.bid - SLOW_EMA_BUFFER[0] < STOP_GAIN)
                         {
+                           // abrir compra
                            uint code = StartTrade(ORDER_TYPE_BUY, LATEST_PRICE.ask, SLOW_EMA_BUFFER[0]);
                            EvaluateTradeResult(code);
                         }
