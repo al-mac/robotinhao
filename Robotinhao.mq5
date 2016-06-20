@@ -1,6 +1,6 @@
 #property copyright "Copyright 2016, AlMac."
 #property link      "https://www.google.com.br"
-#property version   "0.56"
+#property version   "0.58"
 
 #include <Trade\Trade.mqh>
 
