@@ -1,36 +1,44 @@
 #property copyright "Copyright 2016, AlMac."
 #property link      "https://www.google.com.br"
-#property version   "0.55"
+#property version   "0.56"
 
 #include <Trade\Trade.mqh>
 
 // PARAMETROS;
-input int      FAST_EMA = 17;
-input int      SLOW_EMA = 34;
-input int      VOLUME = 5;
-input double   PROFIT_MOVE_STOP = 0;
-input double   STOP_GAIN = 10;
+input int               FAST_EMA = 17;
+input int               SLOW_EMA = 34;
+input int               VOLUME = 5;
+input double            PROFIT_MOVE_STOP = 0;
+input double            STOP_GAIN = 10;
+input double            MIN_AVERAGE_DISTANCE = 5;
+input ENUM_TIMEFRAMES   FASTER_TIMEFRAME = PERIOD_M1;
+input int               EMA_FASTER_TIMEFRAME = 21;
+input int               AVERAGE_DISTANCE = 4;
 
 // INDICADORES;
-int            FAST_EMA_HANDLE;
-int            SLOW_EMA_HANDLE;
-double         FAST_EMA_BUFFER[];
-double         SLOW_EMA_BUFFER[];
+int                     FAST_EMA_HANDLE;
+int                     SLOW_EMA_HANDLE;
+int                     EMA_HANDLE_FASTER_TIMEFRAME;
+double                  FAST_EMA_BUFFER[];
+double                  SLOW_EMA_BUFFER[];
+double                  EMA_BUFFER_FASTER_TIMEFRAME[];
 
 // ESTADO DO TRADE;
-bool           IS_TRADING;
-bool           IS_BUY;
+bool                    IS_TRADING;
+bool                    IS_BUY;
 
 // PREÇOS;
-MqlTick        LATEST_PRICE;
-MqlRates       RECENT_BARS[];
-CTrade         TRADE;
-double         LAST_SL;
+MqlTick                 LATEST_PRICE;
+MqlRates                RECENT_BARS[];
+CTrade                  TRADE;
+double                  LAST_SL;
 
 int OnInit()
 {
    FAST_EMA_HANDLE = iMA(NULL, 0, FAST_EMA, 0, MODE_EMA, PRICE_CLOSE);
    SLOW_EMA_HANDLE = iMA(NULL, 0, SLOW_EMA, 0, MODE_EMA, PRICE_CLOSE);
+   EMA_HANDLE_FASTER_TIMEFRAME = iMA(NULL, FASTER_TIMEFRAME, EMA_FASTER_TIMEFRAME, 0, MODE_EMA, PRICE_CLOSE);
+   
    Print("INICIANDO ROBOTINHAO");
    return(INIT_SUCCEEDED);
 }
@@ -50,10 +58,11 @@ void OnTick()
       
    CopyBuffer(FAST_EMA_HANDLE, 0, 0, 5, FAST_EMA_BUFFER);
    CopyBuffer(SLOW_EMA_HANDLE, 0, 0, 5, SLOW_EMA_BUFFER);
+   CopyBuffer(EMA_HANDLE_FASTER_TIMEFRAME, 0, 0, 4, EMA_BUFFER_FASTER_TIMEFRAME);
    
    if(!IS_TRADING)
    {
-      if(time.hour >= 17 && time.min >= 55)
+      if((time.hour == 17 && time.min >= 55) || time.hour >= 18)
          return;
       // ---------------TENDÊNCIA DE BAIXA--------------- //
       // se a média curta está para baixo da longa
@@ -74,8 +83,24 @@ void OnTick()
                if(RECENT_BARS[0].open > FAST_EMA_BUFFER[0] || // ou a maxima esta entre as duas medias
                (RECENT_BARS[0].high > FAST_EMA_BUFFER[0] && RECENT_BARS[0].high < SLOW_EMA_BUFFER[0]))
                {
-                  uint code = StartTrade(ORDER_TYPE_SELL, LATEST_PRICE.bid, SLOW_EMA_BUFFER[0]);
-                  EvaluateTradeResult(code);
+                  if(EMA_BUFFER_FASTER_TIMEFRAME[3] < EMA_BUFFER_FASTER_TIMEFRAME[2] && 
+                     EMA_BUFFER_FASTER_TIMEFRAME[2] < EMA_BUFFER_FASTER_TIMEFRAME[1] && 
+                     EMA_BUFFER_FASTER_TIMEFRAME[1] < EMA_BUFFER_FASTER_TIMEFRAME[0])
+                  {
+                     // se a distância entre as médias for maior que o parâmetro
+                     double avgDist = SLOW_EMA_BUFFER[4] - FAST_EMA_BUFFER[4];
+                     if(avgDist > AVERAGE_DISTANCE)
+                     {
+                        Print("AVGDIST: ", avgDist);
+                        
+                        // se o stop gain for maior que o stop loss
+                        if(SLOW_EMA_BUFFER[0] - LATEST_PRICE.bid < STOP_GAIN)
+                        {
+                           uint code = StartTrade(ORDER_TYPE_SELL, LATEST_PRICE.bid, SLOW_EMA_BUFFER[0]);
+                           EvaluateTradeResult(code);
+                        }
+                     }
+                  }
                }
             }
          }
@@ -100,8 +125,23 @@ void OnTick()
                if(RECENT_BARS[0].open < FAST_EMA_BUFFER[0] || // ou a minima esta entre as duas medias;
                (RECENT_BARS[0].low < FAST_EMA_BUFFER[0] && RECENT_BARS[0].low > SLOW_EMA_BUFFER[0]))
                {
-                  uint code = StartTrade(ORDER_TYPE_BUY, LATEST_PRICE.ask, SLOW_EMA_BUFFER[0]);
-                  EvaluateTradeResult(code);
+                  if(EMA_BUFFER_FASTER_TIMEFRAME[3] > EMA_BUFFER_FASTER_TIMEFRAME[2] && 
+                     EMA_BUFFER_FASTER_TIMEFRAME[2] > EMA_BUFFER_FASTER_TIMEFRAME[1] && 
+                     EMA_BUFFER_FASTER_TIMEFRAME[1] > EMA_BUFFER_FASTER_TIMEFRAME[0])
+                  {
+                     // se a distância entre as médias for maior que o parâmetro
+                     double avgDist = FAST_EMA_BUFFER[4] - SLOW_EMA_BUFFER[4];
+                     if(avgDist > AVERAGE_DISTANCE)
+                     {
+                        Print("AVGDIST: ", avgDist);
+                        // se o stop gain for maior que o stop loss
+                        if(LATEST_PRICE.bid - SLOW_EMA_BUFFER[0] < STOP_GAIN)
+                        {
+                           uint code = StartTrade(ORDER_TYPE_BUY, LATEST_PRICE.ask, SLOW_EMA_BUFFER[0]);
+                           EvaluateTradeResult(code);
+                        }
+                     }
+                  }
                }
             }
          }
@@ -133,7 +173,7 @@ void OnTick()
       }
       
       
-      if(time.hour >= 17 && time.min >= 55)
+      if((time.hour == 17 && time.min >= 55) || time.hour >= 18)
       {
          Print("FIM DO DIA. ENCERRANDO POSIÇÃO.");
          PlaySound("alert");
