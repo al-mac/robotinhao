@@ -10,9 +10,13 @@ input int               SLOW_EMA = 34;
 input int               VOLUME = 5;
 input double            STOP_GAIN = 10;
 input double            CALAMITY_GAIN = 5;
+input double            EUPHORIA_GAIN = 20;
+input double            EUPHORIA_LOSS = 4;
+input double            EUPHORIA_TRIGGER = 2;
 input ENUM_TIMEFRAMES   FASTER_TIMEFRAME = PERIOD_M1;
 input int               EMA_FASTER_TIMEFRAME = 10;
 input int               AVERAGE_DISTANCE = 4;
+input bool              ENABLE_EUPHORIA = true;
 
 // INDICADORES;
 int                     FAST_EMA_HANDLE;
@@ -26,6 +30,7 @@ double                  EMA_BUFFER_FASTER_TIMEFRAME[];
 bool                    IS_TRADING;
 bool                    IS_BUY;
 bool                    CALAMITY = false;
+bool                    EUPHORIA = false;
 
 // PREÇOS;
 MqlTick                 LATEST_PRICE;
@@ -69,6 +74,7 @@ void OnTick()
          return;
       // ---------------TENDÊNCIA DE BAIXA--------------- //
       // se a média curta está para baixo da longa
+      CopyRates(_Symbol, _Period, 0, 2, RECENT_BARS);
       if(FAST_EMA_BUFFER[4] < SLOW_EMA_BUFFER[4])
       {
          // nos ultimos 5 períodos o preço vêm caindo. (melhorar essa lógica)
@@ -81,7 +87,6 @@ void OnTick()
             // o preço atual está para baixo da média curta
             if(LATEST_PRICE.last < FAST_EMA_BUFFER[4])
             {
-               CopyRates(_Symbol, _Period, 0, 2, RECENT_BARS);
                // e o preço de abertura do candle anterior estava para cima da média curta
                if(RECENT_BARS[0].open > FAST_EMA_BUFFER[0] || // ou a maxima esta entre as duas medias
                   (RECENT_BARS[0].high > FAST_EMA_BUFFER[0] && RECENT_BARS[0].high < SLOW_EMA_BUFFER[0]))
@@ -121,7 +126,6 @@ void OnTick()
             // o preço atual está para cima da média curta
             if(LATEST_PRICE.last > FAST_EMA_BUFFER[4])
             {
-               CopyRates(_Symbol, _Period, 0, 2, RECENT_BARS);
                // e o preço de abertura do candle anterior estava para baixo da média curta
                if(RECENT_BARS[0].open < FAST_EMA_BUFFER[0] || // ou a minima esta entre as duas medias;
                   (RECENT_BARS[0].low < FAST_EMA_BUFFER[0] && RECENT_BARS[0].low > SLOW_EMA_BUFFER[0]))
@@ -153,6 +157,7 @@ void OnTick()
       // Analisar o trade para ver se entra no estado de calamidade.
       // Estado de calamidade: se o preço passar para cima das médias,
       // alterar stop gain para 1 ponto.
+      CopyRates(_Symbol, _Period, 0, 5, RECENT_BARS);
       if(IS_BUY)
       {
          if(SLOW_EMA_BUFFER[0] > LATEST_PRICE.last && !CALAMITY)
@@ -162,6 +167,18 @@ void OnTick()
             Print("BUY: ENTRANDO EM ESTADO DE CALAMIDADE");
             TRADE.PositionModify(_Symbol, PositionGetDouble(POSITION_SL), newTp);
          }
+         
+         if(!EUPHORIA && ENABLE_EUPHORIA && PositionGetDouble(POSITION_TP) > LATEST_PRICE.last + EUPHORIA_TRIGGER &&
+            ((RECENT_BARS[0].low - FAST_EMA_BUFFER[4]) > (RECENT_BARS[1].low - FAST_EMA_BUFFER[3]) && RECENT_BARS[0].low < RECENT_BARS[1].low) &&
+            (RECENT_BARS[1].low - FAST_EMA_BUFFER[3]) > (RECENT_BARS[2].low - FAST_EMA_BUFFER[2] && RECENT_BARS[1].low < RECENT_BARS[2].low)
+           )
+         {
+            EUPHORIA = true;
+            Print("BUY: ENTRANDO EM ESTADO DE EUFORIA");
+            double newTp = PositionGetDouble(POSITION_PRICE_OPEN) + EUPHORIA_GAIN;
+            double newSl = PositionGetDouble(POSITION_PRICE_OPEN) + EUPHORIA_LOSS;
+            TRADE.PositionModify(_Symbol, newSl, newTp);
+         }
       }
       else
       {
@@ -169,10 +186,22 @@ void OnTick()
          {
             CALAMITY = true;
             Print("SELL: ENTRANDO EM ESTADO DE CALAMIDADE");
-            
             double newTp = PositionGetDouble(POSITION_PRICE_OPEN) - CALAMITY_GAIN;
             TRADE.PositionModify(_Symbol, PositionGetDouble(POSITION_SL), newTp);
          }
+         
+         if(!EUPHORIA && ENABLE_EUPHORIA && PositionGetDouble(POSITION_TP) > LATEST_PRICE.last - EUPHORIA_TRIGGER &&
+            ((RECENT_BARS[0].high - FAST_EMA_BUFFER[4]) > (RECENT_BARS[1].high - FAST_EMA_BUFFER[3]) && RECENT_BARS[0].high < RECENT_BARS[1].high) &&
+            (RECENT_BARS[1].high - FAST_EMA_BUFFER[3]) > (RECENT_BARS[2].high - FAST_EMA_BUFFER[2] && RECENT_BARS[1].high < RECENT_BARS[2].high)
+           )
+         {
+            EUPHORIA = true;
+            Print("SELL: ENTRANDO EM ESTADO DE EUFORIA");
+            double newTp = PositionGetDouble(POSITION_PRICE_OPEN) - EUPHORIA_GAIN;
+            double newSl = PositionGetDouble(POSITION_PRICE_OPEN) - EUPHORIA_LOSS;
+            TRADE.PositionModify(_Symbol, newSl, newTp);
+         }
+         
       }
    
       
@@ -223,6 +252,7 @@ void EvaluateTradeResult(uint code)
 uint StartTrade(ENUM_ORDER_TYPE type, double price, double sl)
 {
    CALAMITY = false;
+   EUPHORIA = false;
    TRADE.PositionOpen(_Symbol,
                       type,
                       VOLUME,
