@@ -8,15 +8,15 @@
 input int               FAST_EMA = 17;
 input int               SLOW_EMA = 34;
 input int               VOLUME = 5;
-input double            STOP_GAIN = 10;
-input double            CALAMITY_GAIN = 5;
-input double            EUPHORIA_GAIN = 20;
-input double            EUPHORIA_LOSS = 4;
-input double            EUPHORIA_TRIGGER = 2;
 input ENUM_TIMEFRAMES   FASTER_TIMEFRAME = PERIOD_M1;
 input int               EMA_FASTER_TIMEFRAME = 10;
 input int               AVERAGE_DISTANCE = 4;
+input double            STOP_GAIN = 10;
+input double            CALAMITY_GAIN = 5;
 input bool              ENABLE_EUPHORIA = true;
+input double            EUPHORIA_GAIN = 20;
+input double            EUPHORIA_LOSS = 3;
+input double            EUPHORIA_TRIGGER = 8;
 
 // INDICADORES;
 int                     FAST_EMA_HANDLE;
@@ -31,6 +31,7 @@ bool                    IS_TRADING;
 bool                    IS_BUY;
 bool                    CALAMITY = false;
 bool                    EUPHORIA = false;
+MqlDateTime             LATEST_TRADE_DATE;
 
 // PREÇOS;
 MqlTick                 LATEST_PRICE;
@@ -163,9 +164,12 @@ void OnTick()
          if(SLOW_EMA_BUFFER[0] > LATEST_PRICE.last && !CALAMITY)
          {
             CALAMITY = true;
-            double newTp = PositionGetDouble(POSITION_PRICE_OPEN) + CALAMITY_GAIN;
             Print("BUY: ENTRANDO EM ESTADO DE CALAMIDADE");
-            TRADE.PositionModify(_Symbol, PositionGetDouble(POSITION_SL), newTp);
+            double newTp = PositionGetDouble(POSITION_PRICE_OPEN) + CALAMITY_GAIN;
+            if(newTp > LATEST_PRICE.last)
+               TRADE.PositionModify(_Symbol, PositionGetDouble(POSITION_SL), newTp);
+            else
+               TRADE.PositionClose(_Symbol);
          }
          
          if(!EUPHORIA && ENABLE_EUPHORIA && PositionGetDouble(POSITION_TP) > LATEST_PRICE.last + EUPHORIA_TRIGGER &&
@@ -174,10 +178,16 @@ void OnTick()
            )
          {
             EUPHORIA = true;
-            Print("BUY: ENTRANDO EM ESTADO DE EUFORIA");
+            
             double newTp = PositionGetDouble(POSITION_PRICE_OPEN) + EUPHORIA_GAIN;
             double newSl = PositionGetDouble(POSITION_PRICE_OPEN) + EUPHORIA_LOSS;
-            TRADE.PositionModify(_Symbol, newSl, newTp);
+            if(LATEST_PRICE.last > newSl && LATEST_PRICE.last < newTp)
+            {
+               Print("BUY: ENTRANDO EM ESTADO DE EUFORIA");
+               TRADE.PositionModify(_Symbol, newSl, newTp);
+            }
+            else
+               EUPHORIA = false;
          }
       }
       else
@@ -187,25 +197,33 @@ void OnTick()
             CALAMITY = true;
             Print("SELL: ENTRANDO EM ESTADO DE CALAMIDADE");
             double newTp = PositionGetDouble(POSITION_PRICE_OPEN) - CALAMITY_GAIN;
-            TRADE.PositionModify(_Symbol, PositionGetDouble(POSITION_SL), newTp);
+            if(newTp < LATEST_PRICE.last)
+               TRADE.PositionModify(_Symbol, PositionGetDouble(POSITION_SL), newTp);
+            else
+               TRADE.PositionClose(_Symbol);
          }
          
-         if(!EUPHORIA && ENABLE_EUPHORIA && PositionGetDouble(POSITION_TP) > LATEST_PRICE.last - EUPHORIA_TRIGGER &&
+         if(!EUPHORIA && !CALAMITY && ENABLE_EUPHORIA && PositionGetDouble(POSITION_TP) > LATEST_PRICE.last - EUPHORIA_TRIGGER &&
             ((RECENT_BARS[0].high - FAST_EMA_BUFFER[4]) > (RECENT_BARS[1].high - FAST_EMA_BUFFER[3]) && RECENT_BARS[0].high < RECENT_BARS[1].high) &&
             (RECENT_BARS[1].high - FAST_EMA_BUFFER[3]) > (RECENT_BARS[2].high - FAST_EMA_BUFFER[2] && RECENT_BARS[1].high < RECENT_BARS[2].high)
            )
          {
             EUPHORIA = true;
-            Print("SELL: ENTRANDO EM ESTADO DE EUFORIA");
+            
             double newTp = PositionGetDouble(POSITION_PRICE_OPEN) - EUPHORIA_GAIN;
             double newSl = PositionGetDouble(POSITION_PRICE_OPEN) - EUPHORIA_LOSS;
-            TRADE.PositionModify(_Symbol, newSl, newTp);
+            
+            if(LATEST_PRICE.last < newSl && LATEST_PRICE.last > newTp)
+            {
+               Print("SELL: ENTRANDO EM ESTADO DE EUFORIA");
+               TRADE.PositionModify(_Symbol, newSl, newTp);
+            }
+            else
+               EUPHORIA = false;
          }
          
       }
    
-      
-      
       if((time.hour == 17 && time.min >= 55) || time.hour >= 18)
       {
          Print("FIM DO DIA. ENCERRANDO POSIÇÃO.");
