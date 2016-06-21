@@ -31,7 +31,6 @@ bool                    IS_TRADING;
 bool                    IS_BUY;
 bool                    CALAMITY = false;
 bool                    EUPHORIA = false;
-MqlDateTime             LATEST_TRADE_DATE;
 
 // PREÇOS;
 MqlTick                 LATEST_PRICE;
